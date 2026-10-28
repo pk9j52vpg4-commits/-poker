@@ -42,7 +42,10 @@ input{padding:11px;border-radius:10px;border:1px solid var(--line);background:#1
 .nets{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--mut);margin-top:10px}
 .nets .up{color:#59d17f}.nets .dn{color:#ff7a70}
 .log{margin-top:10px;font-size:12px;color:var(--mut);max-height:200px;overflow:auto}
+.cl{max-height:150px;overflow:auto;font-size:13px;margin:6px 0;word-break:break-all}
+.stk{display:flex;gap:4px;flex-wrap:wrap}.stk button{flex:0 0 auto;padding:5px 9px;font-size:18px}
 </style></head><body><div id="app"></div>
+<div id="chatw" style="display:none;max-width:560px;margin:0 auto;padding:0 12px 24px"><div class="panel"><div class="m">チャット</div><div id="cl" class="cl"></div><div class="stk"><button data-s="👍">👍</button><button data-s="😂">😂</button><button data-s="🔥">🔥</button><button data-s="😱">😱</button><button data-s="🙏">🙏</button><button data-s="👏">👏</button><button data-s="🤝">🤝</button><button data-s="💀">💀</button><button data-s="😎">😎</button><button data-s="🎉">🎉</button></div><div class="row"><input id="ci" maxlength="100" placeholder="メッセージ"><button id="cs" class="p" style="flex:0 0 auto">送信</button></div></div></div>
 <script>
 const SU=['♠','♥','♦','♣'],RK=['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
 const HN=['ハイカード','ワンペア','ツーペア','スリーカード','ストレート','フラッシュ','フルハウス','フォーカード','ストレートフラッシュ'];
@@ -128,6 +131,7 @@ function exec(m){
  if(m.c=='join'){if(!p&&m.n){const ch=Math.max(BB*10,Math.min(MAXBUY,Math.round((+m.bb||100)*BB)));G.players.push(newP(m.id,String(m.n).slice(0,12),ch))}}
  else if(m.c=='deal'){if(pre&&p)deal(G)}
  else if(m.c=='topup'){if(p&&pre){const a=Math.min(Math.round((+m.bb||0)*BB),MAXBUY-p.chips);if(a>0){p.chips+=a;p.buy=(p.buy||0)+a;lg(G,p.name+' +'+fm(a)+' 追加')}}}
+ else if(m.c=='chat'){if(p&&m.t){const L=G.chat||[];L.push({i:((L[L.length-1]||{}).i||0)+1,n:p.name,t:String(m.t).slice(0,100)});G.chat=L.slice(-30)}}
  else if(m.c=='reset'){Object.assign(G,fresh(),{players:[]})}
  else if(m.c=='act'){if(!pre&&G.players[G.turn]&&G.players[G.turn].id==m.id){if(m.to)lg(G,G.players[G.turn].name+' タイムアウト');applyAct(G,m.t,m.amt)}}
  if(m.c=='act'||m.c=='deal')G.dl=(G.phase=='lobby'||G.phase=='showdown')?0:Date.now()+TURN;
@@ -190,7 +194,7 @@ function render(){
    if(room>=1)h+=`<div class="row"><input id="tu" type="number" inputmode="numeric" min="1" max="${room}" value="${Math.min(100,room)}"><button data-a="topup" style="flex:2">BBを追加(最大200BBまで)</button></div>`}}
  h+='<div class="nets">'+G.players.map(p=>{const net=p.chips+(pre?0:p.total)-(p.buy||START);return `<span>${esc(p.name)} <b class="${net>=0?'up':'dn'}">${sg(net)}</b></span>`}).join('')+'</div>';
  if(G.log.length)h+='<div class="log">'+G.log.slice().reverse().map(esc).join('<br>')+'</div>';
- A.innerHTML=h;tick()}
+ A.innerHTML=h;tick();renderChat()}
 
 const app=document.getElementById('app');
 app.addEventListener('click',e=>{
@@ -204,6 +208,14 @@ app.addEventListener('click',e=>{
  else if(t=='raise')send({c:'act',t:'raise',amt:Math.round((parseFloat(document.getElementById('rv').value)||0)*BB)});
  else send({c:'act',t})});
 app.addEventListener('input',e=>{if(e.target.id=='rv')rv=Math.round((parseFloat(e.target.value)||0)*BB);if(e.target.id=='nm')nm=e.target.value});
+function renderChat(){
+ const w=document.getElementById('chatw'),me=S&&S.players.find(p=>p.id==uid);w.style.display=me?'block':'none';if(!me)return;
+ const C=S.chat||[],L=document.getElementById('cl'),k=C.length+':'+((C[C.length-1]||{}).i||0);
+ if(L.dataset.k===k)return;L.dataset.k=k;
+ L.innerHTML=C.map(c=>`<div><b>${esc(c.n)}</b> ${esc(c.t)}</div>`).join('');L.scrollTop=L.scrollHeight}
+function sendChat(){const i=document.getElementById('ci'),t=i.value.trim();if(t){send({c:'chat',t});i.value=''}}
+document.getElementById('chatw').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.s)send({c:'chat',t:b.dataset.s});else if(b.id=='cs')sendChat()});
+document.getElementById('ci').addEventListener('keydown',e=>{if(e.key=='Enter')sendChat()});
 function tick(){const r=S&&S.dl?Math.max(0,Math.ceil((S.dl-(Date.now()+off))/1000)):0;document.querySelectorAll('.cd').forEach(e=>e.textContent=r);
  if(role=='host'&&S&&S.dl&&Date.now()>S.dl){const p=S.players[S.turn];if(p)exec({c:'act',id:p.id,t:S.cur-p.bet>0?'fold':'call',to:1})}}
 setInterval(tick,500);
