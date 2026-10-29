@@ -44,6 +44,12 @@ input{padding:11px;border-radius:10px;border:1px solid var(--line);background:#1
 .log{margin-top:10px;font-size:12px;color:var(--mut);max-height:200px;overflow:auto}
 .cl{max-height:150px;overflow:auto;font-size:13px;margin:6px 0;word-break:break-all}
 .stk{display:flex;gap:4px;flex-wrap:wrap}.stk button{flex:0 0 auto;padding:5px 9px;font-size:18px}
+.hb{display:flex;gap:8px;align-items:center;overflow:auto;margin:6px 0;font-size:12px}
+.hi{display:flex;align-items:center;gap:3px;background:#05070d;border:1px solid var(--line);border-radius:8px;padding:2px 6px;white-space:nowrap}
+.hi .c{width:18px;height:26px;font-size:10px}.td{margin-left:auto;white-space:nowrap}
+.up{color:#59d17f}.dn{color:#ff7a70}
+label.away{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:14px}
+input[type=checkbox]{width:20px;height:20px;padding:0}
 </style></head><body><div id="app"></div>
 <div id="chatw" style="display:none;max-width:560px;margin:0 auto;padding:0 12px 24px"><div class="panel"><div class="m">チャット</div><div id="cl" class="cl"></div><div class="stk"><button data-s="👍">👍</button><button data-s="😂">😂</button><button data-s="🔥">🔥</button><button data-s="😱">😱</button><button data-s="🙏">🙏</button><button data-s="👏">👏</button><button data-s="🤝">🤝</button><button data-s="💀">💀</button><button data-s="😎">😎</button><button data-s="🎉">🎉</button></div><div class="row"><input id="ci" maxlength="100" placeholder="メッセージ"><button id="cs" class="p" style="flex:0 0 auto">送信</button></div></div></div>
 <script>
@@ -67,25 +73,27 @@ function best(c){let b=null;for(let i=0;i<c.length;i++)for(let j=i+1;j<c.length;
 
 /* ---------- ゲームロジック(ホストだけが実行) ---------- */
 const act=p=>!p.folded&&p.hand&&p.hand.length>0,can=p=>act(p)&&p.chips>0;
+const live=p=>p.chips>0&&!p.away;
 const fresh=()=>({players:[],phase:'lobby',board:[],deck:[],cur:0,turn:0,dealer:-1,hands:0,log:[],msg:''});
 const newP=(id,name,ch)=>({id,name,chips:ch,buy:ch,hand:null,bet:0,total:0,folded:false,acted:false,last:''});
 function nxt(G,from,f){const n=G.players.length;for(let i=1;i<=n;i++){const k=((from+i)%n+n)%n;if(f(G.players[k]))return k}return -1}
 function put(p,a){a=Math.min(a,p.chips);p.chips-=a;p.bet+=a;p.total+=a}
 const lg=(G,t)=>{G.log.push(t);G.log=G.log.slice(-40)};
 function deal(G){
- if(G.players.filter(p=>p.chips>0).length<2)return;
- G.dealer=nxt(G,G.dealer,p=>p.chips>0);
+ if(G.players.filter(live).length<2)return;
+ G.dealer=nxt(G,G.dealer,live);
  const d=[...Array(52).keys()];for(let i=51;i>0;i--){const j=Math.floor(Math.random()*(i+1));[d[i],d[j]]=[d[j],d[i]]}
  G.deck=d;G.board=[];G.msg='';G.cur=BB;G.phase='preflop';
- G.players.forEach(p=>{p.bet=0;p.total=0;p.folded=false;p.acted=false;p.last='';p.hand=p.chips>0?[d.pop(),d.pop()]:null});
- const s=G.players.filter(p=>p.chips>0).length==2?G.dealer:nxt(G,G.dealer,p=>p.chips>0),b=nxt(G,s,p=>p.chips>0);
+ G.players.forEach(p=>{p.bet=0;p.total=0;p.folded=false;p.acted=false;p.last='';p.s0=p.chips;p.hand=live(p)?[d.pop(),d.pop()]:null});
+ const s=G.players.filter(live).length==2?G.dealer:nxt(G,G.dealer,live),b=nxt(G,s,live);
  G.hands=(G.hands||0)+1;
  if(G.hands%50==0){const k=5+Math.floor(Math.random()*6),a=BB*k;G.players.forEach(p=>{if(p.hand)put(p,a)});G.msg='💣 ボムポット! 全員 '+k+'BB ('+a+')';lg(G,'💣 ボムポット '+k+'BB');G.phase='preflop';street(G);return}
  put(G.players[s],SB);put(G.players[b],BB);
  lg(G,'── ハンド '+G.hands+' ──');adv(G,b)}
+function endHand(G){G.players.forEach(p=>{if(p.hand&&p.hand.length&&p.s0!=null)p.hist=(p.hist||[]).concat({h:p.hand,d:p.chips-p.s0}).slice(-8)})}
 function adv(G,i){
  const P=G.players,al=P.filter(act);
- if(al.length==1){const w=al[0];w.chips+=P.reduce((a,p)=>a+p.total,0);G.phase='showdown';G.msg=w.name+' の勝ち(全員フォールド)';return}
+ if(al.length==1){const w=al[0];w.chips+=P.reduce((a,p)=>a+p.total,0);G.phase='showdown';G.msg=w.name+' の勝ち(全員フォールド)';endHand(G);return}
  const cc=al.filter(can).length,need=p=>can(p)&&(p.bet<G.cur||(!p.acted&&cc>1)),k=nxt(G,i,need);
  if(k>=0){G.turn=k;return}
  street(G)}
@@ -108,7 +116,7 @@ function showdown(G){
   ws.forEach((i,j)=>{P[i].chips+=sh+(j==0?pot-sh*ws.length:0)});
   out.push(ws.map(i=>P[i].name+'('+HN[sc[i][0]]+')').join('、')+' が '+fm(pot))}
  P.forEach((p,i)=>{if(sc[i])lg(G,p.name+' '+p.hand.map(ct).join(' ')+' = '+HN[sc[i][0]])});
- G.phase='showdown';G.msg='勝者: '+out.join(' / ')}
+ G.phase='showdown';G.msg='勝者: '+out.join(' / ');endHand(G)}
 function applyAct(G,t,amt){
  const p=G.players[G.turn],tc=G.cur-p.bet;let x;
  if(t=='fold'){p.folded=true;x='フォールド'}
@@ -118,19 +126,20 @@ function applyAct(G,t,amt){
  p.last=x;lg(G,p.name+' '+x);p.acted=true;adv(G,G.turn)}
 
 /* ---------- 通信(PeerJS: ホストが正、他の人は操作を送るだけ) ---------- */
-let S=null,role=null,peer=null,conn=null,code='',st='',nm='',rv=0,uid='',off=0;
+let S=null,role=null,peer=null,conn=null,code='',st='',nm='',rv=0,uid='',off=0,showEnd=false;
 const conns={};
 try{uid=localStorage.pkid||(localStorage.pkid=Math.random().toString(36).slice(2,10))}catch(e){uid=Math.random().toString(36).slice(2,10)}
 const gen=()=>Array.from({length:4},()=>'ABCDEFGHJKMNPQRSTUVWXYZ'[Math.floor(Math.random()*23)]).join('');
 function view(id){ // 他人の手札は伏せて送る
  const G=structuredClone(S);G.deck=[];G.srv=Date.now();
- G.players.forEach(p=>{if(p.hand&&p.id!=id&&!(G.phase=='showdown'&&act(p)))p.hand=p.hand.map(()=>-1)});return G}
+ G.players.forEach(p=>{if(p.id!=id&&p.hist)p.hist=p.hist.map(x=>({d:x.d}));if(p.hand&&p.id!=id&&!(G.phase=='showdown'&&act(p)))p.hand=p.hand.map(()=>-1)});return G}
 function bcast(){Object.entries(conns).forEach(([id,c])=>{if(c.open)c.send(view(id))})}
 function exec(m){
  const G=S?structuredClone(S):fresh(),p=G.players.find(x=>x.id==m.id),pre=G.phase=='lobby'||G.phase=='showdown';
  if(m.c=='join'){if(!p&&m.n){const ch=Math.max(BB*10,Math.min(MAXBUY,Math.round((+m.bb||100)*BB)));G.players.push(newP(m.id,String(m.n).slice(0,12),ch))}}
  else if(m.c=='deal'){if(pre&&p)deal(G)}
  else if(m.c=='topup'){if(p&&pre){const a=Math.min(Math.round((+m.bb||0)*BB),MAXBUY-p.chips);if(a>0){p.chips+=a;p.buy=(p.buy||0)+a;lg(G,p.name+' +'+fm(a)+' 追加')}}}
+ else if(m.c=='away'){if(p)p.away=!p.away}
  else if(m.c=='chat'){if(p&&m.t){const L=G.chat||[];L.push({i:((L[L.length-1]||{}).i||0)+1,n:p.name,t:String(m.t).slice(0,100)});G.chat=L.slice(-30)}}
  else if(m.c=='reset'){Object.assign(G,fresh(),{players:[]})}
  else if(m.c=='act'){if(!pre&&G.players[G.turn]&&G.players[G.turn].id==m.id){if(m.to)lg(G,G.players[G.turn].name+' タイムアウト');applyAct(G,m.t,m.amt)}}
@@ -169,6 +178,10 @@ function render(){
  const G=S,me=G.players.find(p=>p.id==uid),pre=G.phase=='lobby'||G.phase=='showdown';
  if(role=='host')h+=`<div class="m">招待リンク(タップで選択してコピー)</div><input readonly value="${esc(location.href.split('#')[0]+'#'+code)}" onclick="this.select()">`;
  if(st)h+=`<div class="m">${esc(st)}</div>`;
+ if(showEnd){const rows=G.players.map(p=>({n:p.name,d:p.chips+(pre?0:p.total)-(p.buy||START)})).sort((a,b)=>b.d-a.d);
+  h+=`<div class="panel" style="margin:10px 0"><b>今日の精算</b><div class="m">持ち込み額との差です(スクショして共有できます)</div>${rows.map(r=>`<div class="row" style="justify-content:space-between"><span>${esc(r.n)}</span><b class="${r.d>=0?'up':'dn'}">${sg(r.d)} (${r.d>=0?'+':''}${r.d})</b></div>`).join('')}<div class="row"><button data-a="end">閉じる</button></div></div>`}
+ const tn=me?me.chips+(pre?0:me.total)-(me.buy||START):0;
+ const hb=me?`<div class="hb">${(me.hist||[]).slice(-4).reverse().map(x=>`<span class="hi">${x.h.map(cf).join('')}<b class="${x.d>=0?'up':'dn'}">${sg(x.d)}</b></span>`).join('')}<span class="td">今日の収支 <b class="${tn>=0?'up':'dn'}">${sg(tn)}</b></span></div>`:'';
  const pot=G.players.reduce((a,p)=>a+p.total,0),n=G.players.length,mi=Math.max(0,G.players.findIndex(p=>p.id==uid));
  const seats=G.players.map((p,i)=>{
   const k=(i-mi+n)%n,a=Math.PI/2+2*Math.PI*k/n,x=50+41*Math.cos(a),y=47+38*Math.sin(a),isMe=p.id==uid;
@@ -176,8 +189,8 @@ function render(){
   let bd='';if(!pre&&p.last){const c=p.last.startsWith('フォールド')?'fd':/^(レイズ|ベット)/.test(p.last)?'rs':'ck';bd=`<div class="bd ${c}">${esc(p.last)}</div>`}
   else if(p.bet)bd=`<div class="bd">${fm(p.bet)}</div>`;
   const ps=posName(G,i);
-  return `<div class="seat${isMe?' me':''}${!pre&&G.turn==i?' t':''}${!pre&&p.hand&&p.folded?' f':''}" style="left:${x}%;top:${y}%">${cs?`<div class="hc">${cs}</div>`:''}<div class="nb"><b>${esc(p.name)}</b><div class="m2">${ps?`<span class="pos">${ps}</span> `:''}${fm(p.chips)}</div></div>${G.dealer==i&&G.phase!='lobby'?'<span class="dbtn">D</span>':''}${bd}${!pre&&G.turn==i?'<div class="m2"><span class="cd"></span>秒</div>':''}</div>`}).join('');
- h+=`<div class="tbl"><div class="felt"></div><div class="ctr"><div class="ph">${G.phase=='lobby'?'待機中':G.phase.toUpperCase()} ・ ${fm(SB)}/${fm(BB)} ・ ハンド ${G.hands||0}</div><div class="pot">ポット ${fm(pot)}</div><div class="cards">${[0,1,2,3,4].map(i=>G.board[i]!=null?cf(G.board[i]):ce).join('')}</div>${G.msg?`<div class="msg">${esc(G.msg)}</div>`:''}</div>${seats}</div>`;
+  return `<div class="seat${isMe?' me':''}${!pre&&G.turn==i?' t':''}${!pre&&p.hand&&p.folded||p.away?' f':''}" style="left:${x}%;top:${y}%">${cs?`<div class="hc">${cs}</div>`:''}<div class="nb"><b>${esc(p.name)}</b><div class="m2">${ps?`<span class="pos">${ps}</span> `:''}${fm(p.chips)}</div></div>${G.dealer==i&&G.phase!='lobby'?'<span class="dbtn">D</span>':''}${bd}${p.away?'<div class="m2">離席中</div>':''}${!pre&&G.turn==i?'<div class="m2"><span class="cd"></span>秒</div>':''}</div>`}).join('');
+ h+=hb+`<div class="tbl"><div class="felt"></div><div class="ctr"><div class="ph">${G.phase=='lobby'?'待機中':G.phase.toUpperCase()} ・ ${fm(SB)}/${fm(BB)} ・ ハンド ${G.hands||0}</div><div class="pot">ポット ${fm(pot)}</div><div class="cards">${[0,1,2,3,4].map(i=>G.board[i]!=null?cf(G.board[i]):ce).join('')}</div>${G.msg?`<div class="msg">${esc(G.msg)}</div>`:''}</div>${seats}</div>`;
  if(me&&me.hand&&me.hand.length)h+=`<div class="mycards">${me.hand.map(cf).join('')}</div>`;
  if(!me){h+=`<div class="panel"><div class="row"><input id="nm" placeholder="あなたの名前" maxlength="12" value="${esc(nm)}"></div><div class="row"><input id="bb" type="number" inputmode="numeric" min="10" max="200" value="100"><button class="p" data-a="join" style="flex:2">BB持ち込みで参加(最大200BB)</button></div></div>`}
  else{
@@ -187,12 +200,14 @@ function render(){
    const qs=[['最小',mn],['½ポット',sz(.5)],['¾ポット',sz(.75)],['ポット',sz(1)],['オールイン',mx]];
    h+=`<div class="panel"><div class="m" style="margin-bottom:8px">あなたの番 ・ 残り <b class="cd"></b>秒</div><div class="row"><button data-a="fold">フォールド</button><button class="p" data-a="call">${tc?'コール '+fm(Math.min(tc,me.chips)):'チェック'}</button></div><div class="qs">${qs.map(([l,v])=>`<button data-a="q" data-v="${v}">${l}<small>${fm(v)}</small></button>`).join('')}</div><div class="row"><input id="rv" type="number" inputmode="decimal" step="0.5" min="${mn/BB}" max="${mx/BB}" value="${rv/BB}"><button class="p" data-a="raise">${G.cur?'レイズ':'ベット'}</button></div><div class="m" style="margin-top:6px">${G.cur?'レイズ':'ベット'}額は「合計いくらにするか」をbbで入力(上のボタンで自動入力)</div></div>`}
   else if(!pre)h+=`<div class="m" style="text-align:center">${esc(G.players[G.turn]?G.players[G.turn].name:'')} の番を待っています…</div>`;
+  h+=`<label class="away"><input type="checkbox" data-a="away" ${me.away?'checked':''}> 離席する</label>`;
   if(pre){h+='<div class="row">';
-   if(G.players.filter(p=>p.chips>0).length>=2)h+=`<button class="p" data-a="deal">${G.phase=='lobby'?'ゲーム開始':'次のハンド'}</button>`;
+   if(G.players.filter(live).length>=2)h+=`<button class="p" data-a="deal">${G.phase=='lobby'?'ゲーム開始':'次のハンド'}</button>`;
    h+='</div>';
    const room=Math.floor((MAXBUY-me.chips)/BB);
    if(room>=1)h+=`<div class="row"><input id="tu" type="number" inputmode="numeric" min="1" max="${room}" value="${Math.min(100,room)}"><button data-a="topup" style="flex:2">BBを追加(最大200BBまで)</button></div>`}}
  h+='<div class="nets">'+G.players.map(p=>{const net=p.chips+(pre?0:p.total)-(p.buy||START);return `<span>${esc(p.name)} <b class="${net>=0?'up':'dn'}">${sg(net)}</b></span>`}).join('')+'</div>';
+ h+='<div class="row"><button data-a="end">今日の精算を見る</button></div>';
  if(G.log.length)h+='<div class="log">'+G.log.slice().reverse().map(esc).join('<br>')+'</div>';
  A.innerHTML=h;tick();renderChat()}
 
@@ -204,6 +219,8 @@ app.addEventListener('click',e=>{
  else if(t=='join'){const n=(document.getElementById('nm').value||'').trim();if(n){nm=n;send({c:'join',n,bb:parseFloat(document.getElementById('bb').value)||100})}}
  else if(t=='deal')send({c:'deal'});
  else if(t=='topup')send({c:'topup',bb:parseFloat(document.getElementById('tu').value)||0});
+ else if(t=='end'){showEnd=!showEnd;render()}
+ else if(t=='away')send({c:'away'})
  else if(t=='q'){rv=+a.dataset.v;const el=document.getElementById('rv');if(el)el.value=rv/BB}
  else if(t=='raise')send({c:'act',t:'raise',amt:Math.round((parseFloat(document.getElementById('rv').value)||0)*BB)});
  else send({c:'act',t})});
@@ -217,7 +234,7 @@ function sendChat(){const i=document.getElementById('ci'),t=i.value.trim();if(t)
 document.getElementById('chatw').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.s)send({c:'chat',t:b.dataset.s});else if(b.id=='cs')sendChat()});
 document.getElementById('ci').addEventListener('keydown',e=>{if(e.key=='Enter')sendChat()});
 function tick(){const r=S&&S.dl?Math.max(0,Math.ceil((S.dl-(Date.now()+off))/1000)):0;document.querySelectorAll('.cd').forEach(e=>e.textContent=r);
- if(role=='host'&&S&&S.dl&&Date.now()>S.dl){const p=S.players[S.turn];if(p)exec({c:'act',id:p.id,t:S.cur-p.bet>0?'fold':'call',to:1})}}
+ if(role=='host'&&S&&S.dl&&(Date.now()>S.dl||(S.players[S.turn]&&S.players[S.turn].away))){const p=S.players[S.turn];if(p)exec({c:'act',id:p.id,t:S.cur-p.bet>0?'fold':'call',to:1})}}
 setInterval(tick,500);
 render();
 if(location.hash.length>1){role='client';code=location.hash.slice(1).toUpperCase();render();connect()}
